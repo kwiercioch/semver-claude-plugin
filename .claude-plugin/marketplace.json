@@ -1,0 +1,21 @@
+{
+  "name": "semver",
+  "owner": {
+    "name": "Kris Wiercioch",
+    "email": "kris@kwiercioch.com"
+  },
+  "metadata": {
+    "description": "Git semantic versioning workflows for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "semver",
+      "source": {
+        "source": "./"
+      },
+      "description": "Release tagging, hotfix branching, changelog generation, and SemVer conventions",
+      "version": "1.0.0"
+    }
+  ]
+}

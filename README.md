@@ -64,17 +64,16 @@ main (v1.4.0)
 
 ## Installation
 
-Install directly from GitHub:
+### Step 1: Add the marketplace
 
 ```bash
-claude plugins add github:kwiercioch/semver-claude-plugin
+/plugins marketplace add kwiercioch/semver-claude-plugin
 ```
 
-Or from a local clone:
+### Step 2: Install the plugin
 
 ```bash
-git clone https://github.com/kwiercioch/semver-claude-plugin.git
-claude plugins add /path/to/semver-claude-plugin
+/plugins install semver@semver
 ```
 
 After installation, the `/semver-*` commands and `semver-conventions` skill are immediately available in any repository.

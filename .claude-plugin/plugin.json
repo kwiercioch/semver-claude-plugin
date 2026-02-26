@@ -1,0 +1,13 @@
+{
+  "name": "semver",
+  "description": "Git semantic versioning workflows — releases, hotfixes, changelogs",
+  "version": "1.0.0",
+  "author": {
+    "name": "Kris Wiercioch",
+    "email": "kris@kwiercioch.com"
+  },
+  "homepage": "https://github.com/kwiercioch/semver-claude-plugin",
+  "repository": "https://github.com/kwiercioch/semver-claude-plugin",
+  "license": "MIT",
+  "keywords": ["semver", "versioning", "release", "hotfix", "changelog"]
+}
