@@ -1,6 +1,6 @@
 # Semver Plugin for Claude Code
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that brings semantic versioning workflows into your terminal. Analyze commits, tag releases, manage hotfixes, and generate changelogs — all through slash commands.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that brings semantic versioning workflows into your terminal. Analyze commits, tag releases, manage pre-releases, handle hotfixes, and generate changelogs — all through slash commands.
 
 ## What It Does
 
@@ -8,8 +8,10 @@ Instead of manually figuring out version bumps, writing changelog entries, and m
 
 - **Analyzes your commits** to suggest whether the next release should be a major, minor, or patch bump
 - **Supports conventional commits** (`feat:`, `fix:`, `BREAKING CHANGE:`) with smart fallback — if your team doesn't use them consistently, Claude reads the commit content and categorizes it
+- **Pre-release support** with flexible labels — use `alpha`, `beta`, `rc`, or any label you want, with automatic numbering and promotion
 - **Generates changelogs** in [Keep a Changelog](https://keepachangelog.com/) format, grouped by Added/Fixed/Changed/Breaking
-- **Manages hotfix branches** end-to-end: branch from the latest tag, fix, tag, merge back to main
+- **Manages hotfixes** with both branch-based and trunk-based workflows, tagged for DORA metrics
+- **Auto-detects your default branch** — works with `main`, `master`, or any branch name
 - **Always asks before pushing** — tags and pushes to origin are gated by confirmation
 
 ## How It Works
@@ -17,10 +19,7 @@ Instead of manually figuring out version bumps, writing changelog entries, and m
 The plugin follows **tag-based semantic versioning** on your default branch (`main`, `master`, or whatever your repo uses — auto-detected):
 
 ```
-v1.0.0  →  v1.1.0  →  v1.2.0  →  v1.2.1 (hotfix)  →  v2.0.0
-  patch fix = PATCH (v1.0.0 → v1.0.1)
-  new feature = MINOR (v1.0.0 → v1.1.0)
-  breaking change = MAJOR (v1.0.0 → v2.0.0)
+v1.0.0  →  v1.1.0  →  v2.0.0-beta.1  →  v2.0.0-rc.1  →  v2.0.0  →  v2.0.1 (hotfix)
 ```
 
 Commit messages are scanned for conventional prefixes. When prefixes are missing, Claude analyzes the commit content to determine the category. You always get the final say before anything is tagged or pushed.
@@ -76,14 +75,44 @@ Tag a new release. Without an argument, it analyzes commits and asks you to conf
 
 What it does:
 1. Analyzes commits since the last tag
-2. Suggests bump type (or uses your explicit choice)
-3. Updates `docs/CHANGELOG.md` with categorized entries
-4. Commits the changelog, creates the tag
-5. Asks before pushing to origin
+2. Detects active pre-releases and offers to graduate (e.g., `v2.0.0-rc.2` → `v2.0.0`)
+3. Suggests bump type (or uses your explicit choice)
+4. Updates `docs/CHANGELOG.md` with categorized entries
+5. Commits the changelog, creates the tag
+6. Asks before pushing to origin
+
+### `/semver-pre <label> [major|minor|patch]`
+
+Create or increment pre-release versions with any label.
+
+**Start a new pre-release track:**
+
+```
+/semver-pre beta major     # v2.0.0-beta.1
+/semver-pre alpha minor    # v1.5.0-alpha.1
+```
+
+**Increment within a track:**
+
+```
+/semver-pre beta           # v2.0.0-beta.1 → v2.0.0-beta.2 → v2.0.0-beta.3
+```
+
+**Promote to a new label:**
+
+```
+/semver-pre rc             # v2.0.0-beta.3 → v2.0.0-rc.1
+```
+
+**Graduate to stable:**
+
+```
+/semver-release            # v2.0.0-rc.2 → v2.0.0
+```
 
 ### `/semver-hotfix start|finish`
 
-Full hotfix workflow for urgent production fixes.
+Hotfix workflow for urgent production fixes. Supports both branch-based and trunk-based development.
 
 **Starting a hotfix:**
 
@@ -91,7 +120,7 @@ Full hotfix workflow for urgent production fixes.
 /semver-hotfix start
 ```
 
-Creates a `hotfix/vX.Y.Z` branch from the latest release tag. You're ready to fix.
+On the default branch, it asks whether to create a hotfix branch or work directly on trunk. On any other branch, it creates a `hotfix/vX.Y.Z` branch from the latest stable tag.
 
 **Finishing a hotfix:**
 
@@ -99,14 +128,27 @@ Creates a `hotfix/vX.Y.Z` branch from the latest release tag. You're ready to fi
 /semver-hotfix finish
 ```
 
-Updates the changelog, tags the patch release, merges back to main, and asks before pushing.
+Updates the changelog, creates an annotated tag with `[hotfix]` marker, merges back (branch-based only), and asks before pushing.
 
-The full flow:
+**Branch-based flow:**
 
 ```
 main (v1.4.0) ──────────────────────── main (v1.4.1)
        \                                  /
         └── hotfix/v1.4.1 ── fix ── tag ─┘
+```
+
+**Trunk-based flow:**
+
+```
+main (v1.4.0) ── fix ── tag v1.4.1 [hotfix]
+```
+
+Both flows produce the same annotated tag with `[hotfix]` metadata, so DORA metrics can identify hotfix deployments regardless of branching strategy:
+
+```bash
+# Query hotfix releases
+git tag -l 'v*' --format='%(refname:short) %(contents)' | grep '\[hotfix\]'
 ```
 
 ### `/semver-changelog`
@@ -128,10 +170,23 @@ Auto-activates when Claude encounters versioning, tagging, release, or changelog
 The plugin generates changelogs at `docs/CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/):
 
 ```markdown
+## [v2.0.0] - 2026-03-01
+
+### Added
+- New authentication system (a1b2c3d)
+
+### Breaking
+- Token format changed from JWT to opaque (e5f6a7b)
+
+## [v2.0.0-rc.1] - 2026-02-28 [PRE-RELEASE]
+
+### Added
+- New authentication system (a1b2c3d)
+
 ## [v1.4.1] - 2026-02-26 [HOTFIX]
 
 ### Fixed
-- Prevent duplicate charge on retry (a1b2c3d)
+- Prevent duplicate charge on retry (c3d4e5f)
 
 ## [v1.4.0] - 2026-02-25
 

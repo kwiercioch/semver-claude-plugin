@@ -30,7 +30,23 @@ The user invoked this command with: $ARGUMENTS
 - Get the latest tag: `git describe --tags --abbrev=0 2>/dev/null`
 - If no tags exist, default to `v0.0.0` as the base (first release).
 
-### 2. Determine bump type
+### 2. Check for active pre-release
+
+If the latest tag is a pre-release (contains `-`, e.g., `v2.0.0-rc.2`):
+
+Extract the base version: `v2.0.0-rc.2` → `v2.0.0`
+
+Offer to graduate:
+
+```
+Active pre-release detected: v2.0.0-rc.2
+Graduate to stable v2.0.0? [y/n]
+```
+
+If yes: skip bump detection, use `v2.0.0` as the new version, jump to step 4.
+If no: continue with normal bump detection from the latest **stable** tag.
+
+### 3. Determine bump type
 
 **If an argument was provided** (`major`, `minor`, or `patch`): use it directly.
 
@@ -62,14 +78,14 @@ Confirm? [major/minor/patch/cancel]
 
 Wait for user confirmation before proceeding.
 
-### 3. Calculate new version
+### 4. Calculate new version
 
 Given current `vX.Y.Z` and bump type:
 - **MAJOR**: `v(X+1).0.0`
 - **MINOR**: `vX.(Y+1).0`
 - **PATCH**: `vX.Y.(Z+1)`
 
-### 4. Update changelog
+### 5. Update changelog
 
 Read `docs/CHANGELOG.md` (create if it doesn't exist).
 
@@ -102,7 +118,9 @@ Rules for changelog entries:
 - Omit empty categories (don't include `### Added` if there are no features)
 - Include commit short hash in parentheses: `- Add login (a1b2c3d)`
 
-### 5. Commit and tag
+When graduating from a pre-release, include all commits since the latest stable tag (not just since the pre-release tag). This captures the full set of changes that went through pre-release stages.
+
+### 6. Commit and tag
 
 ```bash
 git add docs/CHANGELOG.md
@@ -110,7 +128,7 @@ git commit -m "chore(release): vX.Y.Z"
 git tag vX.Y.Z
 ```
 
-### 6. Push
+### 7. Push
 
 **Ask the user before pushing.** Show exactly what will happen:
 
@@ -128,7 +146,7 @@ If confirmed:
 git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
-### 7. Summary
+### 8. Summary
 
 Display:
 ```
