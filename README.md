@@ -64,11 +64,20 @@ main (v1.4.0)
 
 ## Installation
 
-Add as a Claude Code plugin marketplace or install locally:
+Install directly from GitHub:
 
 ```bash
-claude plugins add /path/to/semver
+claude plugins add github:kwiercioch/semver-claude-plugin
 ```
+
+Or from a local clone:
+
+```bash
+git clone https://github.com/kwiercioch/semver-claude-plugin.git
+claude plugins add /path/to/semver-claude-plugin
+```
+
+After installation, the `/semver-*` commands and `semver-conventions` skill are immediately available in any repository.
 
 ## License
 
