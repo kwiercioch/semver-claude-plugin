@@ -1,0 +1,125 @@
+name: 'Validate Conventional Commits'
+description: 'Validates that all PR commits follow conventional commit format'
+inputs:
+  allowed-types:
+    description: 'Comma-separated list of allowed commit types'
+    required: false
+    default: 'feat,fix,docs,chore,refactor,style,test,ci,perf,build,revert'
+  require-scope:
+    description: 'Require a scope in parentheses (e.g., feat(auth): ...)'
+    required: false
+    default: 'false'
+  allow-merge-commits:
+    description: 'Allow merge commits without conventional prefix'
+    required: false
+    default: 'true'
+  max-subject-length:
+    description: 'Maximum length for the commit subject line'
+    required: false
+    default: '100'
+
+outputs:
+  valid:
+    description: 'Whether all commits are valid (true/false)'
+    value: ${{ steps.validate.outputs.valid }}
+  report:
+    description: 'Validation report'
+    value: ${{ steps.validate.outputs.report }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get PR commits
+      id: commits
+      shell: bash
+      run: |
+        if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        else
+          BASE_SHA=$(git merge-base HEAD origin/${{ github.event.repository.default_branch }})
+        fi
+        echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+
+    - name: Validate commits
+      id: validate
+      shell: bash
+      run: |
+        ALLOWED_TYPES="${{ inputs.allowed-types }}"
+        REQUIRE_SCOPE="${{ inputs.require-scope }}"
+        ALLOW_MERGE="${{ inputs.allow-merge-commits }}"
+        MAX_LENGTH="${{ inputs.max-subject-length }}"
+        BASE_SHA="${{ steps.commits.outputs.base_sha }}"
+
+        # Build regex from allowed types
+        TYPES_PATTERN=$(echo "$ALLOWED_TYPES" | tr ',' '|')
+
+        if [ "$REQUIRE_SCOPE" = "true" ]; then
+          PATTERN="^($TYPES_PATTERN)\(.+\)!?: .+"
+        else
+          PATTERN="^($TYPES_PATTERN)(\(.+\))?!?: .+"
+        fi
+
+        VALID=true
+        REPORT=""
+        FAIL_COUNT=0
+        PASS_COUNT=0
+
+        while IFS= read -r line; do
+          SHA=$(echo "$line" | cut -d' ' -f1)
+          MSG=$(echo "$line" | cut -d' ' -f2-)
+          SHORT_SHA="${SHA:0:7}"
+
+          # Skip merge commits if allowed
+          if [ "$ALLOW_MERGE" = "true" ] && echo "$MSG" | grep -qE "^Merge "; then
+            REPORT="${REPORT}  ✓ ${SHORT_SHA} ${MSG} (merge commit — skipped)\n"
+            PASS_COUNT=$((PASS_COUNT + 1))
+            continue
+          fi
+
+          # Check subject length
+          SUBJECT_LENGTH=${#MSG}
+          if [ "$SUBJECT_LENGTH" -gt "$MAX_LENGTH" ]; then
+            VALID=false
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            REPORT="${REPORT}  ✗ ${SHORT_SHA} ${MSG}\n    → Subject too long (${SUBJECT_LENGTH}/${MAX_LENGTH} chars)\n"
+            continue
+          fi
+
+          # Check conventional commit format
+          if echo "$MSG" | grep -qE "$PATTERN"; then
+            PASS_COUNT=$((PASS_COUNT + 1))
+            REPORT="${REPORT}  ✓ ${SHORT_SHA} ${MSG}\n"
+          else
+            VALID=false
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            REPORT="${REPORT}  ✗ ${SHORT_SHA} ${MSG}\n    → Must match: <type>(<scope>): <description>\n    → Allowed types: ${ALLOWED_TYPES}\n"
+          fi
+        done < <(git log --oneline "$BASE_SHA"..HEAD)
+
+        # Build summary
+        SUMMARY="${PASS_COUNT} passed, ${FAIL_COUNT} failed"
+
+        {
+          echo "valid=${VALID}"
+          echo "report<<REPORT_EOF"
+          echo -e "Commit validation: ${SUMMARY}\n"
+          echo -e "${REPORT}"
+          if [ "$VALID" = "false" ]; then
+            echo "Expected format: <type>(<scope>): <description>"
+            echo "Allowed types: ${ALLOWED_TYPES}"
+            echo ""
+            echo "Examples:"
+            echo "  feat: add user authentication"
+            echo "  fix(auth): resolve token expiry issue"
+            echo "  feat!: redesign API (breaking change)"
+          fi
+          echo "REPORT_EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Post result
+      shell: bash
+      run: |
+        echo "${{ steps.validate.outputs.report }}"
+        if [ "${{ steps.validate.outputs.valid }}" = "false" ]; then
+          exit 1
+        fi

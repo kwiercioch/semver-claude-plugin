@@ -1,0 +1,21 @@
+name: Validate Commits
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/validate-commits@main
+        with:
+          allowed-types: 'feat,fix,docs,chore,refactor,style,test,ci,perf,build,revert'
+          require-scope: 'false'
+          allow-merge-commits: 'true'
+          max-subject-length: '100'

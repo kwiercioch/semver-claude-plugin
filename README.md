@@ -159,6 +159,71 @@ Regenerate `docs/CHANGELOG.md` from scratch using all existing tags. Useful when
 /semver-changelog
 ```
 
+## CI Enforcement
+
+The plugin includes a reusable GitHub Action that validates every commit in a PR follows conventional commit format. Blocks merge on failure.
+
+### Setup
+
+Add this workflow to any repo at `.github/workflows/validate-commits.yml`:
+
+```yaml
+name: Validate Commits
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/validate-commits@main
+        with:
+          allowed-types: 'feat,fix,docs,chore,refactor,style,test,ci,perf,build,revert'
+          require-scope: 'false'
+          allow-merge-commits: 'true'
+          max-subject-length: '100'
+```
+
+### Configuration
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `allowed-types` | `feat,fix,docs,chore,refactor,style,test,ci,perf,build,revert` | Comma-separated list of allowed commit types |
+| `require-scope` | `false` | Require a scope in parentheses (e.g., `feat(auth): ...`) |
+| `allow-merge-commits` | `true` | Allow merge commits without conventional prefix |
+| `max-subject-length` | `100` | Maximum length for the commit subject line |
+
+### What it checks
+
+Every commit in the PR must match:
+
+```
+<type>(<optional-scope>): <description>
+```
+
+Example output on failure:
+
+```
+Commit validation: 2 passed, 1 failed
+
+  ✓ a1b2c3d feat: add user authentication
+  ✓ b2c3d4e fix(auth): resolve token expiry
+  ✗ c3d4e5f update readme
+    → Must match: <type>(<scope>): <description>
+    → Allowed types: feat,fix,docs,chore,refactor,style,test,ci,perf,build,revert
+```
+
+### Recommended: require as branch protection
+
+After adding the workflow, go to **Settings → Branches → Branch protection rules** for your default branch and add "Conventional Commits" as a required status check. This prevents merging PRs with non-conforming commits.
+
 ## Skills
 
 ### `semver-conventions`
