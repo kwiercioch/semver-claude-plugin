@@ -16,7 +16,16 @@ The user invoked this command with: $ARGUMENTS
 
 ### 1. Preflight checks
 
-- Verify you are on `main` branch. If not, warn and ask if the user wants to continue.
+- **Detect the default branch** by running:
+  ```bash
+  git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
+  ```
+  If that fails (no remote or HEAD not set), fall back to checking which of `main` or `master` exists:
+  ```bash
+  git branch --list main master | head -1 | tr -d ' *'
+  ```
+  Store the result as `DEFAULT_BRANCH` and use it everywhere instead of hardcoding `main`.
+- Verify you are on the default branch. If not, warn and ask if the user wants to continue.
 - Verify working tree is clean (`git status --porcelain`). If dirty, warn and stop.
 - Get the latest tag: `git describe --tags --abbrev=0 2>/dev/null`
 - If no tags exist, default to `v0.0.0` as the base (first release).
@@ -109,14 +118,14 @@ git tag vX.Y.Z
 Ready to push:
   - 1 commit (chore(release): vX.Y.Z)
   - 1 tag (vX.Y.Z)
-  to origin/main
+  to origin/<DEFAULT_BRANCH>
 
 Push now? [y/n]
 ```
 
 If confirmed:
 ```bash
-git push origin main --follow-tags
+git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
 ### 7. Summary

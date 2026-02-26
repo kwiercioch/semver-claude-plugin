@@ -16,6 +16,22 @@ Parse the first argument as the action: `start` or `finish`.
 
 If no argument or unrecognized argument, ask: "Start a new hotfix or finish an existing one? [start/finish]"
 
+## Detect default branch
+
+Before any action, detect the default branch:
+
+```bash
+git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
+```
+
+If that fails, fall back to:
+
+```bash
+git branch --list main master | head -1 | tr -d ' *'
+```
+
+Store the result as `DEFAULT_BRANCH` and use it everywhere instead of hardcoding `main`.
+
 ---
 
 ## Action: `start`
@@ -112,9 +128,9 @@ git tag vX.Y.Z
 6. **Merge back to main:**
 
 ```bash
-git checkout main
-git pull origin main
-git merge hotfix/vX.Y.Z --no-ff -m "Merge hotfix/vX.Y.Z into main"
+git checkout <DEFAULT_BRANCH>
+git pull origin <DEFAULT_BRANCH>
+git merge hotfix/vX.Y.Z --no-ff -m "Merge hotfix/vX.Y.Z into <DEFAULT_BRANCH>"
 ```
 
 If there are merge conflicts, stop and tell the user to resolve them manually, then re-run `/semver-hotfix finish`.
@@ -125,14 +141,14 @@ If there are merge conflicts, stop and tell the user to resolve them manually, t
 Ready to push:
   - Merged hotfix/vX.Y.Z into main
   - Tag: vX.Y.Z
-  to origin/main
+  to origin/<DEFAULT_BRANCH>
 
 Push now? [y/n]
 ```
 
 If confirmed:
 ```bash
-git push origin main --follow-tags
+git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
 8. **Offer to clean up the hotfix branch:**
@@ -153,7 +169,7 @@ git push origin --delete hotfix/vX.Y.Z 2>/dev/null
 Hotfix released: vX.Y.Z
   Tag: vX.Y.Z
   Changelog: docs/CHANGELOG.md updated
-  Merged to: main
+  Merged to: <DEFAULT_BRANCH>
   Branch cleaned: yes/no
   Pushed: yes/no
 ```

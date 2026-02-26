@@ -14,7 +14,7 @@ Instead of manually figuring out version bumps, writing changelog entries, and m
 
 ## How It Works
 
-The plugin follows **tag-based semantic versioning** on the `main` branch:
+The plugin follows **tag-based semantic versioning** on your default branch (`main`, `master`, or whatever your repo uses — auto-detected):
 
 ```
 v1.0.0  →  v1.1.0  →  v1.2.0  →  v1.2.1 (hotfix)  →  v2.0.0
