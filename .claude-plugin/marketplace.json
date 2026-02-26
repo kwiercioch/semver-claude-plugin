@@ -11,9 +11,7 @@
   "plugins": [
     {
       "name": "semver",
-      "source": {
-        "source": "./"
-      },
+      "source": "./",
       "description": "Release tagging, hotfix branching, changelog generation, and SemVer conventions",
       "version": "1.0.0"
     }
