@@ -224,6 +224,84 @@ Commit validation: 2 passed, 1 failed
 
 After adding the workflow, go to **Settings → Branches → Branch protection rules** for your default branch and add "Conventional Commits" as a required status check. This prevents merging PRs with non-conforming commits.
 
+### Tag Validation
+
+A second reusable action validates tags on push and before deployment. It checks:
+
+- **SemVer format** — must match `vX.Y.Z` or `vX.Y.Z-label.N`
+- **Annotated tag** — lightweight tags can be rejected
+- **Version ordering** — new tag must be greater than the latest
+- **Hotfix marker** — `[hotfix]` annotation in tag message (for DORA metrics)
+- **Pre-release labels** — restrict to allowed labels (e.g., only `alpha`, `beta`, `rc`)
+
+#### Tag push validation
+
+Add `.github/workflows/validate-tag.yml`:
+
+```yaml
+name: Validate Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate:
+    name: SemVer Tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/validate-tag@main
+        id: tag
+        with:
+          require-annotated: 'true'
+```
+
+#### Gate deployments by tag type
+
+The action exposes outputs you can use to route deployments:
+
+```yaml
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/validate-tag@main
+        id: tag
+
+      - name: Deploy to production
+        if: steps.tag.outputs.is_pre_release == 'false'
+        run: ./deploy.sh production
+
+      - name: Deploy to staging
+        if: steps.tag.outputs.is_pre_release == 'true'
+        run: ./deploy.sh staging
+
+      - name: Track hotfix (DORA)
+        if: steps.tag.outputs.is_hotfix == 'true'
+        run: echo "Hotfix deployment: ${{ steps.tag.outputs.version }}"
+```
+
+#### Tag validation configuration
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `tag` | *(from github.ref)* | Tag to validate (auto-detected on tag push events) |
+| `require-annotated` | `true` | Reject lightweight tags |
+| `require-hotfix-marker` | `false` | Require `[hotfix]` in tag message when commit message suggests a hotfix |
+| `allowed-pre-labels` | *(empty = any)* | Comma-separated allowed pre-release labels (e.g., `alpha,beta,rc`) |
+
+#### Tag validation outputs
+
+| Output | Example | Description |
+|--------|---------|-------------|
+| `valid` | `true` | Whether the tag passed all checks |
+| `version` | `1.4.1` | Parsed version without `v` prefix |
+| `major` / `minor` / `patch` | `1` / `4` / `1` | Individual version components |
+| `pre-release` | `beta.1` | Pre-release identifier or empty |
+| `is-hotfix` | `true` | Whether `[hotfix]` marker was found |
+| `is-pre-release` | `false` | Whether the tag is a pre-release |
+
 ## Skills
 
 ### `semver-conventions`

@@ -1,0 +1,35 @@
+name: Validate Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate:
+    name: SemVer Tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/validate-tag@main
+        id: tag
+        with:
+          require-annotated: 'true'
+          require-hotfix-marker: 'false'
+          allowed-pre-labels: ''
+
+      # Example: gate deployment based on tag type
+      # - name: Deploy
+      #   if: steps.tag.outputs.is_pre_release == 'false'
+      #   run: echo "Deploying ${{ steps.tag.outputs.version }} to production"
+      #
+      # - name: Deploy to staging
+      #   if: steps.tag.outputs.is_pre_release == 'true'
+      #   run: echo "Deploying ${{ steps.tag.outputs.version }} to staging"
+      #
+      # - name: Track hotfix (DORA)
+      #   if: steps.tag.outputs.is_hotfix == 'true'
+      #   run: echo "Recording hotfix deployment for DORA metrics"

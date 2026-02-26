@@ -1,0 +1,241 @@
+name: 'Validate SemVer Tag'
+description: 'Validates that a git tag follows semantic versioning and has proper metadata'
+inputs:
+  tag:
+    description: 'The tag to validate (e.g., v1.2.3). Defaults to the pushed tag from github.ref.'
+    required: false
+    default: ''
+  require-annotated:
+    description: 'Require annotated tags (not lightweight)'
+    required: false
+    default: 'true'
+  require-hotfix-marker:
+    description: 'Require [hotfix] in annotated message for patch-only bumps from hotfix branches'
+    required: false
+    default: 'false'
+  allowed-pre-labels:
+    description: 'Comma-separated list of allowed pre-release labels (empty = any label allowed)'
+    required: false
+    default: ''
+
+outputs:
+  valid:
+    description: 'Whether the tag is valid (true/false)'
+    value: ${{ steps.validate.outputs.valid }}
+  version:
+    description: 'Parsed version without v prefix (e.g., 1.2.3)'
+    value: ${{ steps.validate.outputs.version }}
+  major:
+    description: 'Major version number'
+    value: ${{ steps.validate.outputs.major }}
+  minor:
+    description: 'Minor version number'
+    value: ${{ steps.validate.outputs.minor }}
+  patch:
+    description: 'Patch version number'
+    value: ${{ steps.validate.outputs.patch }}
+  pre-release:
+    description: 'Pre-release identifier (e.g., beta.1) or empty'
+    value: ${{ steps.validate.outputs.pre_release }}
+  is-hotfix:
+    description: 'Whether the tag is marked as a hotfix (true/false)'
+    value: ${{ steps.validate.outputs.is_hotfix }}
+  is-pre-release:
+    description: 'Whether the tag is a pre-release (true/false)'
+    value: ${{ steps.validate.outputs.is_pre_release }}
+  report:
+    description: 'Validation report'
+    value: ${{ steps.validate.outputs.report }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate tag
+      id: validate
+      shell: bash
+      run: |
+        # Determine the tag to validate
+        TAG="${{ inputs.tag }}"
+        if [ -z "$TAG" ]; then
+          TAG="${GITHUB_REF#refs/tags/}"
+        fi
+
+        REQUIRE_ANNOTATED="${{ inputs.require-annotated }}"
+        REQUIRE_HOTFIX_MARKER="${{ inputs.require-hotfix-marker }}"
+        ALLOWED_PRE_LABELS="${{ inputs.allowed-pre-labels }}"
+
+        VALID=true
+        REPORT=""
+        ERRORS=""
+
+        # --- Check 1: SemVer format ---
+        # Pattern: v<major>.<minor>.<patch>[-<pre-release>]
+        SEMVER_PATTERN="^v([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-zA-Z]+)\.([0-9]+))?$"
+
+        if [[ "$TAG" =~ $SEMVER_PATTERN ]]; then
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[3]}"
+          PRE_RELEASE="${BASH_REMATCH[5]}"
+          PRE_NUMBER="${BASH_REMATCH[6]}"
+          FULL_PRE="${BASH_REMATCH[5]:+${BASH_REMATCH[5]}.${BASH_REMATCH[6]}}"
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+          REPORT="${REPORT}  ✓ Tag format: ${TAG} (valid SemVer)\n"
+          REPORT="${REPORT}    Major: ${MAJOR}, Minor: ${MINOR}, Patch: ${PATCH}\n"
+
+          if [ -n "$PRE_RELEASE" ]; then
+            REPORT="${REPORT}    Pre-release: ${PRE_RELEASE}.${PRE_NUMBER}\n"
+          fi
+        else
+          VALID=false
+          ERRORS="${ERRORS}  ✗ Tag format: ${TAG} is not valid SemVer\n"
+          ERRORS="${ERRORS}    Expected: v<major>.<minor>.<patch> or v<major>.<minor>.<patch>-<label>.<number>\n"
+          ERRORS="${ERRORS}    Examples: v1.0.0, v2.1.0-beta.1, v1.0.0-rc.3\n"
+
+          # Can't continue validation without parsed version
+          {
+            echo "valid=false"
+            echo "version="
+            echo "major="
+            echo "minor="
+            echo "patch="
+            echo "pre_release="
+            echo "is_hotfix=false"
+            echo "is_pre_release=false"
+            echo "report<<REPORT_EOF"
+            echo -e "Tag validation: FAILED\n"
+            echo -e "${ERRORS}"
+            echo "REPORT_EOF"
+          } >> $GITHUB_OUTPUT
+          echo -e "Tag validation: FAILED\n"
+          echo -e "${ERRORS}"
+          exit 1
+        fi
+
+        IS_PRE_RELEASE=false
+        if [ -n "$PRE_RELEASE" ]; then
+          IS_PRE_RELEASE=true
+        fi
+
+        # --- Check 2: Allowed pre-release labels ---
+        if [ -n "$PRE_RELEASE" ] && [ -n "$ALLOWED_PRE_LABELS" ]; then
+          LABEL_ALLOWED=false
+          IFS=',' read -ra LABELS <<< "$ALLOWED_PRE_LABELS"
+          for LABEL in "${LABELS[@]}"; do
+            LABEL=$(echo "$LABEL" | tr -d ' ')
+            if [ "$PRE_RELEASE" = "$LABEL" ]; then
+              LABEL_ALLOWED=true
+              break
+            fi
+          done
+
+          if [ "$LABEL_ALLOWED" = "true" ]; then
+            REPORT="${REPORT}  ✓ Pre-release label: ${PRE_RELEASE} (allowed)\n"
+          else
+            VALID=false
+            ERRORS="${ERRORS}  ✗ Pre-release label: ${PRE_RELEASE} not in allowed list: ${ALLOWED_PRE_LABELS}\n"
+          fi
+        fi
+
+        # --- Check 3: Annotated tag ---
+        IS_HOTFIX=false
+        TAG_MESSAGE=""
+
+        TAG_TYPE=$(git cat-file -t "refs/tags/${TAG}" 2>/dev/null || echo "missing")
+
+        if [ "$TAG_TYPE" = "tag" ]; then
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' "$TAG")
+          REPORT="${REPORT}  ✓ Tag type: annotated\n"
+
+          # Check for hotfix marker
+          if echo "$TAG_MESSAGE" | grep -q '\[hotfix\]'; then
+            IS_HOTFIX=true
+            REPORT="${REPORT}  ✓ Hotfix marker: [hotfix] found in tag message\n"
+          fi
+
+          # Check for pre-release marker
+          if [ "$IS_PRE_RELEASE" = "true" ]; then
+            if echo "$TAG_MESSAGE" | grep -q '\[pre-release\]'; then
+              REPORT="${REPORT}  ✓ Pre-release marker: [pre-release] found in tag message\n"
+            else
+              REPORT="${REPORT}  ⚠ Pre-release marker: [pre-release] not found in tag message (advisory)\n"
+            fi
+          fi
+
+        elif [ "$TAG_TYPE" = "commit" ]; then
+          if [ "$REQUIRE_ANNOTATED" = "true" ]; then
+            VALID=false
+            ERRORS="${ERRORS}  ✗ Tag type: lightweight (annotated tag required)\n"
+            ERRORS="${ERRORS}    Use: git tag -a ${TAG} -m \"chore(release): ${TAG}\"\n"
+          else
+            REPORT="${REPORT}  ⚠ Tag type: lightweight (annotated recommended)\n"
+          fi
+        elif [ "$TAG_TYPE" = "missing" ]; then
+          # Tag exists in ref but not fetched — skip type check (e.g., on tag push event)
+          REPORT="${REPORT}  ⚠ Tag type: could not determine (tag object not available locally)\n"
+        fi
+
+        # --- Check 4: Hotfix marker requirement ---
+        if [ "$REQUIRE_HOTFIX_MARKER" = "true" ] && [ "$IS_HOTFIX" = "false" ]; then
+          # Only flag if this looks like it should be a hotfix
+          # (patch-only bump from a hotfix branch or commit message hints)
+          COMMIT_MSG=$(git log -1 --format=%s "$TAG" 2>/dev/null || echo "")
+          if echo "$COMMIT_MSG" | grep -qi "hotfix\|hot.fix\|emergency.fix\|urgent.fix"; then
+            VALID=false
+            ERRORS="${ERRORS}  ✗ Hotfix marker: commit message suggests hotfix but tag lacks [hotfix] annotation\n"
+            ERRORS="${ERRORS}    Use: git tag -a ${TAG} -m \"chore(release): ${TAG} [hotfix]\"\n"
+          fi
+        fi
+
+        # --- Check 5: Version ordering ---
+        LATEST_STABLE=$(git tag --list 'v*' --sort=-version:refname | grep -v '-' | head -1)
+        if [ -n "$LATEST_STABLE" ] && [ "$IS_PRE_RELEASE" = "false" ] && [ "$TAG" != "$LATEST_STABLE" ]; then
+          # Simple check: new tag should be greater than latest
+          LATEST_VERSION="${LATEST_STABLE#v}"
+          if printf '%s\n' "$LATEST_VERSION" "$VERSION" | sort -V | tail -1 | grep -q "^${LATEST_VERSION}$"; then
+            if [ "$VERSION" != "$LATEST_VERSION" ]; then
+              VALID=false
+              ERRORS="${ERRORS}  ✗ Version ordering: ${TAG} is not greater than latest ${LATEST_STABLE}\n"
+            fi
+          else
+            REPORT="${REPORT}  ✓ Version ordering: ${TAG} > ${LATEST_STABLE}\n"
+          fi
+        fi
+
+        # --- Build output ---
+        STATUS="PASSED"
+        if [ "$VALID" = "false" ]; then
+          STATUS="FAILED"
+        fi
+
+        {
+          echo "valid=${VALID}"
+          echo "version=${VERSION}"
+          echo "major=${MAJOR}"
+          echo "minor=${MINOR}"
+          echo "patch=${PATCH}"
+          echo "pre_release=${FULL_PRE}"
+          echo "is_hotfix=${IS_HOTFIX}"
+          echo "is_pre_release=${IS_PRE_RELEASE}"
+          echo "report<<REPORT_EOF"
+          echo -e "Tag validation: ${STATUS}\n"
+          echo -e "Tag: ${TAG}"
+          if [ -n "$REPORT" ]; then
+            echo -e "\nChecks:"
+            echo -e "${REPORT}"
+          fi
+          if [ -n "$ERRORS" ]; then
+            echo -e "\nErrors:"
+            echo -e "${ERRORS}"
+          fi
+          echo "REPORT_EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Post result
+      shell: bash
+      run: |
+        echo "${{ steps.validate.outputs.report }}"
+        if [ "${{ steps.validate.outputs.valid }}" = "false" ]; then
+          exit 1
+        fi
