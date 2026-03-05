@@ -112,17 +112,34 @@ Rules:
 - Mark with `[PRE-RELEASE]` in the heading
 - Omit empty categories
 
-### 4. Commit and tag
+### 4. Sync version files
+
+Scan the repo root for known version files and update them to the new version (without `v` prefix):
+
+| File | Field | How to update |
+|------|-------|---------------|
+| `package.json` | `"version": "X.Y.Z-label.N"` | JSON — update the top-level `version` field |
+| `composer.json` | `"version": "X.Y.Z-label.N"` | JSON — update the top-level `version` field |
+| `pyproject.toml` | `version = "X.Y.Z-label.N"` | Update under `[project]` or `[tool.poetry]` section |
+| `.claude-plugin/plugin.json` | `"version": "X.Y.Z-label.N"` | JSON — update the top-level `version` field |
+
+Rules:
+- Only update files that **exist** and **already have** a version field
+- Strip the `v` prefix — files use `1.2.3-beta.1`, tags use `v1.2.3-beta.1`
+- Do not create files that don't exist
+- If no version files are found, skip silently
+
+### 5. Commit and tag
 
 ```bash
-git add docs/CHANGELOG.md
+git add docs/CHANGELOG.md package.json composer.json pyproject.toml .claude-plugin/plugin.json 2>/dev/null
 git commit -m "chore(release): vX.Y.Z-label.N [pre-release]"
 git tag -a vX.Y.Z-label.N -m "chore(release): vX.Y.Z-label.N [pre-release]"
 ```
 
-Use annotated tag (`-a`) so the pre-release metadata is stored in the tag message.
+Only `git add` files that were actually modified. Use annotated tag (`-a`) so the pre-release metadata is stored in the tag message.
 
-### 5. Push
+### 6. Push
 
 **Ask the user before pushing:**
 
@@ -140,7 +157,7 @@ If confirmed:
 git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
-### 6. Summary
+### 7. Summary
 
 ```
 Pre-release tagged: vX.Y.Z-label.N

@@ -1,0 +1,124 @@
+name: 'Retag Squash-Merged Releases'
+description: 'Moves orphaned release tags to their corresponding squash-merge commits on the default branch'
+
+inputs:
+  dry-run:
+    description: 'Log what would happen without retagging'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Retag orphaned tags
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+
+        DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || true)
+        if [ -z "$DEFAULT_BRANCH" ]; then
+          DEFAULT_BRANCH=$(git branch --list main master | head -1 | tr -d ' *')
+        fi
+
+        if [ -z "$DEFAULT_BRANCH" ]; then
+          echo "::error::Could not detect default branch"
+          exit 1
+        fi
+
+        echo "Default branch: $DEFAULT_BRANCH"
+
+        # Get all semver tags (v*)
+        TAGS=$(git tag --list 'v*' --sort=-version:refname)
+
+        if [ -z "$TAGS" ]; then
+          echo "No version tags found. Nothing to do."
+          exit 0
+        fi
+
+        RETAGGED=0
+        SKIPPED=0
+
+        while IFS= read -r TAG; do
+          TAG_COMMIT=$(git rev-list -n 1 "$TAG" 2>/dev/null || true)
+          if [ -z "$TAG_COMMIT" ]; then
+            continue
+          fi
+
+          # Check if the tag's commit is reachable from the default branch
+          if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
+            SKIPPED=$((SKIPPED + 1))
+            continue
+          fi
+
+          echo ""
+          echo "Orphaned tag found: $TAG (points to $TAG_COMMIT)"
+
+          # Get the tag message (for annotated tags)
+          TAG_MESSAGE=$(git tag -l "$TAG" --format='%(contents)' 2>/dev/null || true)
+          if [ -z "$TAG_MESSAGE" ]; then
+            TAG_MESSAGE="$TAG"
+          fi
+
+          # Try to find the PR number from commits around this tag
+          # Strategy: look at the tag's commit message for a PR reference
+          TAG_COMMIT_MSG=$(git log -1 --format='%s' "$TAG_COMMIT" 2>/dev/null || true)
+          PR_NUMBER=""
+
+          # Check if the tag commit message itself has a PR number
+          if [[ "$TAG_COMMIT_MSG" =~ \(#([0-9]+)\) ]]; then
+            PR_NUMBER="${BASH_REMATCH[1]}"
+          fi
+
+          # If no PR number from tag commit, search recent commits on default branch
+          # that reference a PR and contain similar content
+          SQUASH_COMMIT=""
+
+          if [ -n "$PR_NUMBER" ]; then
+            # Find the squash commit on default branch that references this PR
+            SQUASH_COMMIT=$(git log "origin/$DEFAULT_BRANCH" --oneline --grep="#${PR_NUMBER}" --format='%H' | head -1)
+          fi
+
+          if [ -z "$SQUASH_COMMIT" ]; then
+            # Fallback: search for squash commits whose message contains the tag version
+            VERSION="${TAG#v}"
+            SQUASH_COMMIT=$(git log "origin/$DEFAULT_BRANCH" --oneline --grep="$VERSION" --format='%H' | head -1)
+          fi
+
+          if [ -z "$SQUASH_COMMIT" ]; then
+            # Last resort: find the merge commit closest in time to the tag
+            TAG_DATE=$(git log -1 --format='%ci' "$TAG_COMMIT" 2>/dev/null || true)
+            if [ -n "$TAG_DATE" ]; then
+              SQUASH_COMMIT=$(git log "origin/$DEFAULT_BRANCH" --after="$TAG_DATE" --format='%H' | tail -1)
+            fi
+          fi
+
+          if [ -z "$SQUASH_COMMIT" ]; then
+            echo "::warning::Could not find squash-merge commit for $TAG — skipping"
+            continue
+          fi
+
+          echo "  -> Moving to squash commit: $SQUASH_COMMIT"
+          echo "  -> Message: $(git log -1 --format='%s' "$SQUASH_COMMIT")"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "  -> [DRY RUN] Would retag $TAG from $TAG_COMMIT to $SQUASH_COMMIT"
+          else
+            # Delete old tag locally and remotely
+            git tag -d "$TAG" >/dev/null 2>&1
+            git push origin ":refs/tags/$TAG" >/dev/null 2>&1 || true
+
+            # Recreate annotated tag on the squash commit with original message
+            git tag -a "$TAG" "$SQUASH_COMMIT" -m "$TAG_MESSAGE"
+            git push origin "$TAG" >/dev/null 2>&1
+
+            echo "  -> Retagged successfully"
+          fi
+
+          RETAGGED=$((RETAGGED + 1))
+
+        done <<< "$TAGS"
+
+        echo ""
+        echo "Summary: $RETAGGED retagged, $SKIPPED already on $DEFAULT_BRANCH"

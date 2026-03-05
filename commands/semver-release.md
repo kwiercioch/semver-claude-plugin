@@ -120,15 +120,42 @@ Rules for changelog entries:
 
 When graduating from a pre-release, include all commits since the latest stable tag (not just since the pre-release tag). This captures the full set of changes that went through pre-release stages.
 
-### 6. Commit and tag
+### 6. Sync version files
+
+Scan the repo root for known version files and update them to the new version (without `v` prefix):
+
+| File | Field | How to update |
+|------|-------|---------------|
+| `package.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+| `composer.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+| `pyproject.toml` | `version = "X.Y.Z"` | Update under `[project]` or `[tool.poetry]` section |
+| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+
+Rules:
+- Only update files that **exist** and **already have** a version field
+- Strip the `v` prefix — files use `1.2.3`, tags use `v1.2.3`
+- Do not create files that don't exist
+- If no version files are found, skip silently
+
+Show which files were updated:
+
+```
+Version files updated:
+  - package.json (1.2.3 -> 1.3.0)
+  - .claude-plugin/plugin.json (1.2.3 -> 1.3.0)
+```
+
+### 7. Commit and tag
 
 ```bash
-git add docs/CHANGELOG.md
+git add docs/CHANGELOG.md package.json composer.json pyproject.toml .claude-plugin/plugin.json 2>/dev/null
 git commit -m "chore(release): vX.Y.Z"
 git tag vX.Y.Z
 ```
 
-### 7. Push
+Only `git add` files that were actually modified. The command above uses `2>/dev/null` to ignore files that don't exist.
+
+### 8. Push
 
 **Ask the user before pushing.** Show exactly what will happen:
 
@@ -146,7 +173,7 @@ If confirmed:
 git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
-### 8. Summary
+### 9. Summary
 
 Display:
 ```

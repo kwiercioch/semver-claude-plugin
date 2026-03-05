@@ -1,0 +1,23 @@
+name: Retag Squash-Merged Releases
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  retag:
+    name: Fix Orphaned Tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: kwiercioch/semver-claude-plugin/.github/actions/retag-squash@main
+        with:
+          dry-run: 'false'

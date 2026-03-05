@@ -145,17 +145,34 @@ Insert a new section after the header:
 
 Use the same formatting rules as `/semver-release` (clean up prefixes, capitalize, include short hash).
 
-5. **Commit the changelog and create annotated tag:**
+5. **Sync version files:**
+
+Scan the repo root for known version files and update them to the new version (without `v` prefix):
+
+| File | Field | How to update |
+|------|-------|---------------|
+| `package.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+| `composer.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+| `pyproject.toml` | `version = "X.Y.Z"` | Update under `[project]` or `[tool.poetry]` section |
+| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | JSON — update the top-level `version` field |
+
+Rules:
+- Only update files that **exist** and **already have** a version field
+- Strip the `v` prefix
+- Do not create files that don't exist
+- If no version files are found, skip silently
+
+6. **Commit the changelog and create annotated tag:**
 
 ```bash
-git add docs/CHANGELOG.md
+git add docs/CHANGELOG.md package.json composer.json pyproject.toml .claude-plugin/plugin.json 2>/dev/null
 git commit -m "chore(release): vX.Y.Z [hotfix]"
 git tag -a vX.Y.Z -m "chore(release): vX.Y.Z [hotfix]"
 ```
 
-The annotated tag with `[hotfix]` in the message is critical for DORA metrics — it marks this deployment as a hotfix regardless of the branching strategy used.
+Only `git add` files that were actually modified. The annotated tag with `[hotfix]` in the message is critical for DORA metrics — it marks this deployment as a hotfix regardless of the branching strategy used.
 
-6. **Merge back (branch-based only):**
+7. **Merge back (branch-based only):**
 
 Skip this step entirely if in trunk-based mode (already on default branch).
 
@@ -167,7 +184,7 @@ git merge hotfix/vX.Y.Z --no-ff -m "Merge hotfix/vX.Y.Z into <DEFAULT_BRANCH>"
 
 If there are merge conflicts, stop and tell the user to resolve them manually, then re-run `/semver-hotfix finish`.
 
-7. **Ask before pushing:**
+8. **Ask before pushing:**
 
 ```
 Ready to push:
@@ -182,7 +199,7 @@ If confirmed:
 git push origin <DEFAULT_BRANCH> --follow-tags
 ```
 
-8. **Offer to clean up (branch-based only):**
+9. **Offer to clean up (branch-based only):**
 
 Skip if trunk-based.
 
@@ -196,7 +213,7 @@ git branch -d hotfix/vX.Y.Z
 git push origin --delete hotfix/vX.Y.Z 2>/dev/null
 ```
 
-9. **Summary:**
+10. **Summary:**
 
 ```
 Hotfix released: vX.Y.Z
